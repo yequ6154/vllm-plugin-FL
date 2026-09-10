@@ -390,9 +390,9 @@ class QSAStateBackend(AttentionBackend):
 
     @classmethod
     def indexes_kv_by_block_stride(cls) -> bool:
-        # This side cache uses the identity/layered layout below, not the
-        # block-major layout required by vLLM's cross-layer packing path.
-        return False
+        # vLLM 0.24 may pad this side cache while unifying per-layer page sizes;
+        # the flattened block/row layout below preserves that padded addressing.
+        return True
 
     @staticmethod
     def get_kv_cache_stride_order(
@@ -488,6 +488,7 @@ class QSAKeyStateCache(_QSAStateCache):
             head_size=self.head_size,
             head_size_v=0,
             dtype=self.dtype,
+            indexes_kv_by_block_stride=True,
         )
 
 

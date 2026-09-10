@@ -17,23 +17,24 @@ from vllm_fl.models.qwen3_8_flash_next.gpu.qsa import (
 
 
 @pytest.mark.parametrize(
-    "backend,expected_order,expected_layered_order",
+    "backend,expected_order,expected_layered_order,expected_block_stride",
     [
         (
             Qwen3_8FlashNextQSAAttentionBackend,
             (0, 1, 2, 3, 4),
             (0, 1, 2, 3, 4, 5),
+            False,
         ),
-        (QSAStateBackend, (0, 1, 2, 3), (0, 1, 2, 3, 4)),
+        (QSAStateBackend, (0, 1, 2, 3), (0, 1, 2, 3, 4), True),
     ],
 )
 def test_qsa_backends_use_layered_identity_layout(
-    backend, expected_order, expected_layered_order
+    backend, expected_order, expected_layered_order, expected_block_stride
 ):
-    # An identity leading dimension is not the vLLM block-stride contract.
-    # Keep allocator packing layer-local until a real block-major layout is
-    # implemented and exercised end to end.
-    assert backend.indexes_kv_by_block_stride() is False
+    # The main QSA cache keeps its legacy layout.  The side cache opts into
+    # vLLM's block-stride padding contract so its page can be unified with the
+    # other attention layers.
+    assert backend.indexes_kv_by_block_stride() is expected_block_stride
     assert backend.get_kv_cache_stride_order() == expected_order
     assert backend.get_kv_cache_stride_order(True) == expected_layered_order
 

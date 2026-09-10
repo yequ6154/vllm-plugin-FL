@@ -26,6 +26,7 @@ _LOGITS_WORKSPACE_BYTES = 128 * 1024 * 1024
 _TOPK_WORKSPACE_BYTES = 1024 * 1024
 _QSA_MQA_DOT_ENABLED = os.environ.get("QWEN4_QSA_MQA_DOT", "1") != "0"
 _QSA_SPLIT_ALLOWED = (1, 2, 4, 8, 16, 32)
+_QSA_MIN_BLOCK_M = 16
 
 
 def _qsa_split_required() -> bool:
@@ -1134,7 +1135,7 @@ def _qsa_sparse_paged_attention_split(
 
     scale = q.shape[2] ** -0.5 if softmax_scale is None else softmax_scale
     group_size = q.shape[1] // k_cache.shape[2]
-    block_m = max(8, triton.next_power_of_2(group_size))
+    block_m = max(_QSA_MIN_BLOCK_M, triton.next_power_of_2(group_size))
     block_d = max(16, triton.next_power_of_2(q.shape[2]))
     block_n, num_warps, num_stages = qsa_sparse_triton_launch_config(q.device)
     split_topk = triton.cdiv(logical_indices.shape[1], num_splits)
@@ -1967,11 +1968,7 @@ def qsa_sparse_paged_attention(
         return out
 
     group_size = q.shape[1] // k_cache.shape[2]
-    # Triton accepts an 8-row dot tile on the supported accelerator backend.
-    # TP8 executes three Q heads per replicated KV head, so a minimum of 16
-    # spends most of the M tile on padding.  Eight retains Triton's matrix-dot
-    # lowering while reducing that waste and is neutral to the device vendor.
-    block_m = max(8, triton.next_power_of_2(group_size))
+    block_m = max(_QSA_MIN_BLOCK_M, triton.next_power_of_2(group_size))
     block_d = max(16, triton.next_power_of_2(q.shape[2]))
     block_n, num_warps, num_stages = qsa_sparse_triton_launch_config(q.device)
     num_splits = _qsa_sparse_split_count(q, k_cache, logical_indices.shape[1])
